@@ -571,6 +571,9 @@ larger, the overflow was dropped. Measured loss for a 64 KiB body: **exactly
 4. The current epoll interest mask of each socket is tracked, so re-arming
    for reading never clears a pending `EPOLLOUT`.
 
+> Full mechanism, diagrams and a deadlock-freedom argument:
+> [`../docs/architecture.md` §8](../docs/architecture.md#8-backpressure--the-pauseresume-mechanism).
+
 **Verification:**
 
 | test | before | after |
@@ -666,6 +669,13 @@ standard library.
 | [`tools/churn_client.py`](tools/churn_client.py) | Connection-churn load generator |
 | [`tools/verify_proxy.py`](tools/verify_proxy.py) | Integrity + distribution + concurrency checker |
 | [`tools/analyze.py`](tools/analyze.py) | Turns the raw files into `results/SUMMARY.md` |
+
+---
+
+## See also
+
+* [`../docs/architecture.md`](../docs/architecture.md) — the design this benchmark measures: threads, epoll event loop, buffers, backpressure
+* [`../README.md`](../README.md) — overview and build instructions
 
 ---
 
