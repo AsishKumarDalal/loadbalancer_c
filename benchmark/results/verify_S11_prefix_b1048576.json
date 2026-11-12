@@ -1,0 +1,58 @@
+{
+  "tool": "verify_proxy",
+  "host": "127.0.0.1",
+  "port": 8181,
+  "sequential_requests": 40,
+  "sequential_ok": 0,
+  "concurrent_requests": 16,
+  "concurrent_ok": 0,
+  "total_failures": 56,
+  "failure_samples": [
+    {
+      "phase": "sequential",
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "phase": "sequential",
+      "error": "ConnectionResetError(104, 'Connection reset by peer')"
+    },
+    {
+      "phase": "sequential",
+      "error": "ConnectionRefusedError(111, 'Connection refused')"
+    },
+    {
+      "phase": "sequential",
+      "error": "ConnectionRefusedError(111, 'Connection refused')"
+    },
+    {
+      "phase": "sequential",
+      "error": "ConnectionRefusedError(111, 'Connection refused')"
+    },
+    {
+      "phase": "sequential",
+      "error": "ConnectionRefusedError(111, 'Connection refused')"
+    },
+    {
+      "phase": "sequential",
+      "error": "ConnectionRefusedError(111, 'Connection refused')"
+    },
+    {
+      "phase": "sequential",
+      "error": "ConnectionRefusedError(111, 'Connection refused')"
+    },
+    {
+      "phase": "sequential",
+      "error": "ConnectionRefusedError(111, 'Connection refused')"
+    },
+    {
+      "phase": "sequential",
+      "error": "ConnectionRefusedError(111, 'Connection refused')"
+    }
+  ],
+  "backend_distribution": {
+    "?": 40
+  },
+  "distinct_backends": 0,
+  "distribution_balanced": null,
+  "PASS": false
+}

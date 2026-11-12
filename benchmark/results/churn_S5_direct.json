@@ -1,0 +1,21 @@
+{
+  "tool": "churn_client",
+  "host": "127.0.0.1",
+  "port": 9007,
+  "threads": 4,
+  "duration_s": 10.0,
+  "connections": 42828,
+  "conn_per_sec": 4282.61,
+  "errors": {
+    "exception": 0,
+    "bad_response": 0
+  },
+  "latency_ms": {
+    "min": 0.048,
+    "mean": 0.421,
+    "p50": 0.363,
+    "p90": 0.693,
+    "p99": 1.47,
+    "max": 8.497
+  }
+}

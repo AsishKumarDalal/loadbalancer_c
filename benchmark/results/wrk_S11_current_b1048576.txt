@@ -1,0 +1,39 @@
+Running 10s test @ http://127.0.0.1:8181/
+  2 threads and 50 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    27.56ms   12.68ms 268.18ms   83.85%
+    Req/Sec   518.77     55.04   609.00     84.44%
+  Latency Distribution
+     50%   25.09ms
+     75%   31.55ms
+     90%   41.21ms
+     99%   59.59ms
+  10321 requests in 10.03s, 10.08GB read
+Requests/sec:   1029.19
+Transfer/sec:      1.01GB
+
+=============== WRK RESULT ===============
+requests_total   = 10321
+duration_s       = 10.028
+requests_per_sec = 1029.19
+bytes_total      = 10823519169
+bytes_per_sec    = 1079303532.00
+transfer_MB_s    = 1029.304
+socket_errors_connect = 0
+socket_errors_read    = 0
+socket_errors_write   = 0
+socket_errors_status  = 0
+socket_errors_timeout = 0
+non2xx_3xx = 0
+--- latency_us ---
+min    = 4609
+mean   = 27564.16
+stdev  = 12683.80
+max    = 268180
+p50    = 25095
+p75    = 31550
+p90    = 41210
+p99    = 59589
+p99_9  = 164773
+--- threads ---
+=========================================

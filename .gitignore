@@ -36,6 +36,16 @@
 *.exe
 *.out
 *.app
+cppbalancer
+cppbalancer_prefix
 
 # debug information files
 *.dwo
+
+# --- benchmark harness ------------------------------------------------------
+benchmark/build/
+benchmark/results/*.log
+
+# Python
+__pycache__/
+*.pyc
