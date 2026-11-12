@@ -2,11 +2,41 @@
 
 A high-performance, non-blocking TCP/HTTP load balancer written in modern C++17. Built from scratch using Linux `epoll`, edge-triggered I/O, and a multi-threaded `SO_REUSEPORT` worker pool — no frameworks, no dependencies.
 
+```mermaid
+graph LR
+    subgraph CLIENTS["Clients"]
+        C1["client A"]
+        C2["client B"]
+        C3["client C"]
+    end
+
+    subgraph LB["cppbalancer :8181"]
+        direction TB
+        W0["worker 0<br/>listen_fd + epoll"]
+        W1["worker 1<br/>listen_fd + epoll"]
+        WN["worker N<br/>listen_fd + epoll"]
+        HC["health checker<br/>connect() probe"]
+    end
+
+    subgraph BACKENDS["Backend pool — round robin"]
+        direction TB
+        B1["backend :9007"]
+        B2["backend :9003"]
+        B3["backend :6789"]
+    end
+
+    CLIENTS -->|"TCP"| LB
+    LB -->|"proxy bytes"| BACKENDS
+    HC -.->|"health probe"| BACKENDS
+
+    style LB fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style HC fill:#fff3e0,stroke:#ef6c00
 ```
-Client ──► [cppbalancer :8181] ──► Backend A :9007
-                                ──► Backend B :9003
-                                ──► Backend C :6789
-```
+
+> 📖 **[Full architecture walk-through → `docs/architecture.md`](docs/architecture.md)** —
+> thread model, the `SO_REUSEPORT` pool, the epoll event loop, the connection
+> state machine, the buffer and backpressure design, and a byte-by-byte trace
+> of a request.
 
 ---
 
@@ -29,23 +59,6 @@ Full methodology, environment capture, raw data and analysis:
 | **Failover** (1 of 3 backends killed) | — | 42,195 → 44,240 req/s (**no loss**) |
 | **Round-robin fairness** | — | 122 / 121 / 121 over 3 backends (**exact**) |
 
-> ### 🐛 The benchmark found a real bug — and it is fixed
-> The original code **silently dropped the tail of every response larger than
-> 64 KiB**. A 64 KiB body arrived 106 bytes short; the client never saw the
-> promised `Content-Length` and hung until it timed out. At a 64 KiB payload
-> the balancer delivered **0 req/s**.
->
-> The fix implements real backpressure (pause reading when the buffer is
-> full, resume it once the peer drains it) instead of truncating:
->
-> | payload | before | after |
-> |---|---|---|
-> | 1 KiB (control) | 42,948 req/s | 42,305 req/s — *unchanged* |
-> | 64 KiB | **0 req/s**, every request timed out | **13,813 req/s** (865 MB/s) |
-> | 1 MiB | **0 req/s**, every request timed out | **1,029 req/s** (1 GB/s) |
->
-> See [§9 of the benchmark report](benchmark/README.md#9-bugs-found-by-this-benchmark).
-
 ---
 
 ## What it does
@@ -56,19 +69,60 @@ Full methodology, environment capture, raw data and analysis:
 
 ## Architecture
 
+> The complete design — thread model, event dispatch, buffer mechanics and a
+> byte-by-byte request trace — is documented in
+> **[`docs/architecture.md`](docs/architecture.md)**. This section is the
+> summary.
+
 ### Worker pool (`SO_REUSEPORT`)
-The main function spawns one worker thread per CPU core. Each thread binds its own `listen_fd` to port `8181` using `SO_REUSEPORT`, meaning the OS kernel load-balances `accept()` calls across workers with no userspace coordination. No mutex. No shared accept queue. Pure parallelism.
+
+```mermaid
+graph LR
+    K["Kernel<br/>SO_REUSEPORT hash<br/>client addr:port → socket"] --> Q0["accept queue 0"]
+    K --> Q1["accept queue 1"]
+    K --> Q2["accept queue 2"]
+    K --> Q3["accept queue 3"]
+    Q0 --- W0["worker 0<br/>private epoll + private fd map"]
+    Q1 --- W1["worker 1"]
+    Q2 --- W2["worker 2"]
+    Q3 --- W3["worker 3"]
+
+    style K fill:#f3e5f5,stroke:#6a1b9a
+```
+
+The main function spawns one worker thread per CPU core. Each thread binds its
+own `listen_fd` to port `8181` using `SO_REUSEPORT`, so the OS kernel
+load-balances `accept()` calls across workers with no userspace coordination.
+No mutex. No shared accept queue. Pure parallelism.
+
+Because each worker owns **both** ends of every connection it handles, a
+connection is never touched by two threads — there is no lock anywhere on
+the data path.
 
 ### Epoll event loop (edge-triggered)
-Each worker runs its own `epoll` instance. All sockets are `O_NONBLOCK`. Client and backend fds are both watched with `EPOLLET` (edge-triggered) for efficiency — the loop only wakes up when new data actually arrives.
+
+Each worker runs its own `epoll` instance. All sockets are `O_NONBLOCK`.
+Client and backend fds are both watched with `EPOLLET` (edge-triggered) for
+efficiency — the loop only wakes up when new data actually arrives.
 
 > **Why not level-triggered everywhere?**
-> The `listen_fd` uses level-triggered (`EPOLLIN` without `EPOLLET`) intentionally. Edge-triggered on a listen socket can silently drop connections under burst load when a wakeup is missed.
+> The `listen_fd` uses level-triggered (`EPOLLIN` without `EPOLLET`)
+> intentionally. Edge-triggered on a listen socket can silently drop
+> connections under burst load when a wakeup is missed.
 
 ### Connection state machine
 
-```
-CONNECTING  →  ACTIVE  →  HALF_CLOSED  →  CLOSING
+```mermaid
+stateDiagram-v2
+    [*] --> CONNECTING : accept() + backend connect() issued
+    CONNECTING --> ACTIVE : backend handshake OK
+    CONNECTING --> [*] : backend connect failed
+    ACTIVE --> ACTIVE : normal bidirectional proxying
+    ACTIVE --> HALF_CLOSED : one side sent FIN
+    ACTIVE --> CLOSING : hard error
+    HALF_CLOSED --> HALF_CLOSED : draining the remaining direction
+    HALF_CLOSED --> [*] : response fully flushed
+    CLOSING --> [*] : deferred cleanup
 ```
 
 | State | Description |
@@ -85,13 +139,35 @@ Each `Connection` owns two fixed-size buffers:
 - `c2b_buf` — data from **client → backend** (64 KiB)
 - `b2c_buf` — data from **backend → client** (64 KiB)
 
-`append_to_buffer(fd, ...)` and `try_write(fd)` are intentionally symmetric — the same logic handles both directions. `EPOLLOUT` is only armed when there's buffered data to flush, and de-armed immediately after, keeping the epoll set clean.
+`append_to_buffer(fd, ...)` and `try_write(fd)` are intentionally symmetric —
+the same logic handles both directions. `EPOLLOUT` is only armed when there's
+buffered data to flush, and de-armed immediately after, keeping the epoll
+set clean.
 
 ### Backpressure (no silent truncation)
 
-A read is only issued for as many bytes as the destination buffer can actually hold. When that buffer fills up, reading from the source socket is **paused** and resumed (via `EPOLL_CTL_MOD`) once the peer has drained the buffer. The current epoll interest mask of each socket is tracked so that re-arming for reading never clears a pending `EPOLLOUT`.
+A read is only issued for as many bytes as the destination buffer can
+actually hold. When that buffer fills up, reading from the source socket is
+**paused** and resumed (via `EPOLL_CTL_MOD`) once the peer has drained the
+buffer. The current epoll interest mask of each socket is tracked so that
+re-arming for reading never clears a pending `EPOLLOUT`.
 
-Without this, any response larger than 64 KiB would lose its tail — see the [benchmark report](benchmark/README.md#9-bugs-found-by-this-benchmark).
+```mermaid
+flowchart LR
+    R["read() into buffer"] --> F{"buffer full?"}
+    F -->|"no"| MORE["keep reading"]
+    F -->|"yes"| P["pause reading<br/>this socket"]
+    P --> W["peer writes<br/>the data out"]
+    W --> D{"buffer drained?"}
+    D -->|"yes"| RS["resume reading<br/>EPOLL_CTL_MOD"]
+    D -->|"no"| W
+    RS --> MORE
+
+    style P fill:#fff3e0,stroke:#ef6c00
+    style RS fill:#e8f5e9,stroke:#2e7d32
+```
+
+Details: [`docs/architecture.md` §8](docs/architecture.md#8-backpressure--the-pauseresume-mechanism).
 
 ### TCP_NODELAY
 Both client and backend sockets have Nagle's algorithm disabled. Without this, the kernel holds small writes (e.g. a lone HTTP status line) until an ACK arrives — adding ~40 ms latency even on loopback and making browsers time out waiting for headers.
@@ -162,6 +238,10 @@ The same settings are available as environment variables
 ├── Makefile                 # build / test / benchmark helpers
 ├── README.md                # this file
 │
+├── docs/                    # design documentation
+│   └── architecture.md      # detailed walk-through: threads, epoll, state machine,
+│                             # buffers, backpressure, request trace, cost model
+│
 ├── archive/                 # superseded code, kept for history — see archive/README.md
 │   ├── loadbalancer_round_robin.cpp    # the original single-threaded balancer
 │   └── README.md
@@ -190,11 +270,15 @@ The same settings are available as environment variables
 | `epoll` over `select`/`poll` | O(1) event delivery regardless of fd count; essential for high connection counts |
 | Edge-triggered I/O | Fewer wakeups under load; requires draining loops but reduces syscall overhead |
 | `SO_REUSEPORT` multi-thread | Eliminates the thundering-herd problem of a shared accept queue; each core is independent |
+| One worker owns both ends of a connection | No fd hand-off between threads ⇒ **no lock on the data path** |
 | Fixed-size stack buffers | Avoids heap allocation per connection; predictable memory layout |
-| **Pause/resume instead of truncate** | A read is only issued for bytes that fit; large responses are streamed, never corrupted |
+| **Pause/resume instead of truncate** | A read is only issued for bytes that fit; large responses are streamed, never corrupted — see [`docs/architecture.md` §8](docs/architecture.md#8-backpressure--the-pauseresume-mechanism) |
 | `TCP_NODELAY` on both sides | Eliminates Nagle-induced latency for HTTP and other request-response protocols |
 | Deferred `close_connection()` | Avoids freeing `conn` mid-event-loop iteration and using a dangling pointer |
 | Level-triggered listen fd | Safer under accept bursts; edge-triggered listen can miss connections |
+
+> Each of these is explained in detail — with diagrams — in
+> [`docs/architecture.md`](docs/architecture.md).
 
 ---
 
