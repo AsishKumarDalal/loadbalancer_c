@@ -1,0 +1,19 @@
+{
+  "tool": "verify_proxy",
+  "host": "127.0.0.1",
+  "port": 8181,
+  "sequential_requests": 300,
+  "sequential_ok": 300,
+  "concurrent_requests": 64,
+  "concurrent_ok": 64,
+  "total_failures": 0,
+  "failure_samples": [],
+  "backend_distribution": {
+    "BE9003": 122,
+    "BE6789": 121,
+    "BE9007": 121
+  },
+  "distinct_backends": 3,
+  "distribution_balanced": true,
+  "PASS": true
+}

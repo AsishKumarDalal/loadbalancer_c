@@ -1,0 +1,408 @@
+{
+  "label": "S3_w1",
+  "pid": 6819,
+  "interval_s": 0.25,
+  "n_cpus": 4,
+  "samples": [
+    {
+      "t": 0.25,
+      "cpu_pct": 99.86,
+      "cpu_pct_of_machine": 24.96,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 0.501,
+      "cpu_pct": 99.67,
+      "cpu_pct_of_machine": 24.92,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 0.752,
+      "cpu_pct": 99.75,
+      "cpu_pct_of_machine": 24.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 1.002,
+      "cpu_pct": 99.77,
+      "cpu_pct_of_machine": 24.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 1.253,
+      "cpu_pct": 99.77,
+      "cpu_pct_of_machine": 24.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 1.504,
+      "cpu_pct": 99.71,
+      "cpu_pct_of_machine": 24.93,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 1.754,
+      "cpu_pct": 103.77,
+      "cpu_pct_of_machine": 25.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 2.005,
+      "cpu_pct": 95.73,
+      "cpu_pct_of_machine": 23.93,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 2.256,
+      "cpu_pct": 99.39,
+      "cpu_pct_of_machine": 24.85,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 2.507,
+      "cpu_pct": 99.76,
+      "cpu_pct_of_machine": 24.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 2.758,
+      "cpu_pct": 99.77,
+      "cpu_pct_of_machine": 24.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 3.008,
+      "cpu_pct": 99.76,
+      "cpu_pct_of_machine": 24.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 3.259,
+      "cpu_pct": 103.76,
+      "cpu_pct_of_machine": 25.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 3.509,
+      "cpu_pct": 95.77,
+      "cpu_pct_of_machine": 23.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 3.76,
+      "cpu_pct": 103.77,
+      "cpu_pct_of_machine": 25.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 4.011,
+      "cpu_pct": 91.8,
+      "cpu_pct_of_machine": 22.95,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 4.261,
+      "cpu_pct": 99.74,
+      "cpu_pct_of_machine": 24.93,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 4.512,
+      "cpu_pct": 99.77,
+      "cpu_pct_of_machine": 24.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 4.762,
+      "cpu_pct": 99.77,
+      "cpu_pct_of_machine": 24.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 5.013,
+      "cpu_pct": 95.78,
+      "cpu_pct_of_machine": 23.95,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 5.264,
+      "cpu_pct": 103.73,
+      "cpu_pct_of_machine": 25.93,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 5.514,
+      "cpu_pct": 99.76,
+      "cpu_pct_of_machine": 24.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 5.765,
+      "cpu_pct": 99.78,
+      "cpu_pct_of_machine": 24.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 6.015,
+      "cpu_pct": 99.76,
+      "cpu_pct_of_machine": 24.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 6.266,
+      "cpu_pct": 95.78,
+      "cpu_pct_of_machine": 23.95,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 6.516,
+      "cpu_pct": 99.77,
+      "cpu_pct_of_machine": 24.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 6.767,
+      "cpu_pct": 103.76,
+      "cpu_pct_of_machine": 25.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 7.018,
+      "cpu_pct": 99.77,
+      "cpu_pct_of_machine": 24.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 7.268,
+      "cpu_pct": 99.77,
+      "cpu_pct_of_machine": 24.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 7.519,
+      "cpu_pct": 99.73,
+      "cpu_pct_of_machine": 24.93,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 7.769,
+      "cpu_pct": 95.78,
+      "cpu_pct_of_machine": 23.95,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 8.02,
+      "cpu_pct": 103.8,
+      "cpu_pct_of_machine": 25.95,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 8.27,
+      "cpu_pct": 99.8,
+      "cpu_pct_of_machine": 24.95,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 8.521,
+      "cpu_pct": 95.77,
+      "cpu_pct_of_machine": 23.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 8.772,
+      "cpu_pct": 103.73,
+      "cpu_pct_of_machine": 25.93,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 9.022,
+      "cpu_pct": 99.72,
+      "cpu_pct_of_machine": 24.93,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 9.273,
+      "cpu_pct": 99.77,
+      "cpu_pct_of_machine": 24.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 9.523,
+      "cpu_pct": 99.79,
+      "cpu_pct_of_machine": 24.95,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    },
+    {
+      "t": 9.774,
+      "cpu_pct": 99.77,
+      "cpu_pct_of_machine": 24.94,
+      "rss_mb": 4.29,
+      "hwm_mb": 4.29,
+      "rss_from_statm_mb": 4.29,
+      "threads": 3,
+      "fds": 105
+    }
+  ],
+  "summary": {
+    "cpu_pct_mean": 99.65,
+    "cpu_pct_max": 103.8,
+    "cpu_pct_of_machine_mean": 24.91,
+    "rss_mb_max": 4.29,
+    "hwm_mb_max": 4.29,
+    "threads_max": 3,
+    "fds_max": 105,
+    "n_samples": 39
+  }
+}

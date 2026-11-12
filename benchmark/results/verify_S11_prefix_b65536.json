@@ -1,0 +1,61 @@
+{
+  "tool": "verify_proxy",
+  "host": "127.0.0.1",
+  "port": 8181,
+  "sequential_requests": 40,
+  "sequential_ok": 1,
+  "concurrent_requests": 16,
+  "concurrent_ok": 5,
+  "total_failures": 50,
+  "failure_samples": [
+    {
+      "phase": "sequential",
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "phase": "sequential",
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "phase": "sequential",
+      "error": "truncated: got 65430 want 65536"
+    },
+    {
+      "phase": "sequential",
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "phase": "sequential",
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "phase": "sequential",
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "phase": "sequential",
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "phase": "sequential",
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "phase": "sequential",
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "phase": "sequential",
+      "error": "truncated: got 65430 want 65536"
+    }
+  ],
+  "backend_distribution": {
+    "?": 31,
+    "BE9007": 3,
+    "BE9003": 8,
+    "BE6789": 3
+  },
+  "distinct_backends": 3,
+  "distribution_balanced": null,
+  "PASS": false
+}

@@ -1,20 +1,97 @@
+// ===========================================================================
+//  cppbalancer — non-blocking, multi-threaded TCP/HTTP load balancer
+//
+//  Architecture (unchanged from the original design):
+//    * one worker thread per CPU core, each with its OWN listen socket bound
+//      with SO_REUSEPORT  -> the kernel spreads accepts across cores, no
+//      shared accept queue, no thundering herd, no mutex on the accept path
+//    * every worker owns a private epoll instance and drives BOTH ends of
+//      every proxied connection from that single thread (no fd ownership
+//      handover between threads -> no locking at all on the data path)
+//    * all sockets are O_NONBLOCK; data sockets are edge-triggered (EPOLLET)
+//    * TCP_NODELAY on both legs to defeat Nagle's 40ms delay for HTTP
+//    * a background thread health-checks every backend with a real TCP
+//      connect() and atomically flags unhealthy ones
+//
+//  What this version adds on top of the original (all behaviour-preserving
+//  by default — every new option falls back to the original hard-coded
+//  values) is *runtime configurability* + *lightweight counters*, both of
+//  which are required to benchmark the balancer reproducibly:
+//
+//    --listen-port / --backends / --workers / --health-interval / --quiet
+//
+//  See benchmark/README.md for the methodology and the measured results.
+// ===========================================================================
+
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netinet/tcp.h>
 #include <unistd.h>
 #include <sys/epoll.h>
 #include <cstring>
+#include <cstdlib>
+#include <cstdio>
+#include <cstdarg>
 #include <iostream>
+#include <sstream>
 #include <map>
 #include <vector>
+#include <string>
 #include <thread>
 #include <chrono>
 #include <atomic>
 #include <memory>
+#include <mutex>
 
 #define MAX_EVENTS   1024
 #define BUFFER_SIZE  65536   // Increased: HTTP responses easily exceed 4 KB
 #define LISTEN_PORT  8181
+
+// ---------------------------------------------------------------------------
+// Runtime configuration
+// ---------------------------------------------------------------------------
+struct Config {
+    int                      listen_port     = LISTEN_PORT;
+    int                      workers         = 0;   // 0 => hardware_concurrency()
+    int                      health_interval = 5;   // seconds
+    bool                     verbose         = true;
+    std::vector<std::string> backend_specs;         // "ip:port"
+};
+
+static Config g_cfg;
+
+// ---------------------------------------------------------------------------
+// Logging — the original code used an unguarded std::cout << per connection.
+// That is several write(2) syscalls per connection and shows up clearly
+// under connection-churn load, so it is now switchable with --quiet.
+// ---------------------------------------------------------------------------
+static std::atomic<bool> g_verbose{true};
+static std::mutex        g_log_mutex;
+
+static void log_msg(const char* fmt, ...) {
+    if (!g_verbose.load(std::memory_order_relaxed)) return;
+    va_list ap;
+    va_start(ap, fmt);
+    {
+        std::lock_guard<std::mutex> lk(g_log_mutex);
+        vfprintf(stdout, fmt, ap);
+    }
+    va_end(ap);
+}
+
+// ---------------------------------------------------------------------------
+// Lightweight counters (relaxed atomics — negligible cost, huge diagnostic
+// value while benchmarking: bytes proxied, connections accepted, errors).
+// ---------------------------------------------------------------------------
+struct Counters {
+    std::atomic<uint64_t> connections_accepted{0};
+    std::atomic<uint64_t> connections_closed{0};
+    std::atomic<uint64_t> backend_connect_fail{0};
+    std::atomic<uint64_t> no_healthy_backend{0};
+    std::atomic<uint64_t> bytes_c2b{0};
+    std::atomic<uint64_t> bytes_b2c{0};
+};
+static Counters g_ctr;
 
 // ---------------------------------------------------------------------------
 // Backend
@@ -30,14 +107,23 @@ struct Backend {
 std::vector<std::unique_ptr<Backend>> backends;
 std::atomic<size_t> rr_index{0};
 
+// Default pool = the original hard-coded one.
 void init_backends() {
-    backends.emplace_back(std::make_unique<Backend>("127.0.0.1", 9007));
-    backends.emplace_back(std::make_unique<Backend>("127.0.0.1", 9003));
-    backends.emplace_back(std::make_unique<Backend>("127.0.0.1", 6789));
+    if (g_cfg.backend_specs.empty()) {
+        g_cfg.backend_specs = {"127.0.0.1:9007", "127.0.0.1:9003", "127.0.0.1:6789"};
+    }
+    for (const auto& spec : g_cfg.backend_specs) {
+        auto pos = spec.rfind(':');
+        std::string ip = (pos == std::string::npos) ? "127.0.0.1" : spec.substr(0, pos);
+        int port = (pos == std::string::npos) ? std::atoi(spec.c_str())
+                                              : std::atoi(spec.c_str() + pos + 1);
+        backends.emplace_back(std::make_unique<Backend>(ip, port));
+    }
 }
 
 Backend* select_backend() {
     size_t n = backends.size();
+    if (n == 0) return nullptr;
     for (size_t i = 0; i < n; ++i) {
         size_t idx = rr_index.fetch_add(1, std::memory_order_relaxed) % n;
         if (backends[idx]->healthy) return backends[idx].get();
@@ -88,9 +174,61 @@ struct Connection {
     bool client_eof  = false;
     bool backend_eof = false;
 
+    // ---- Backpressure -----------------------------------------------------
+    // Each direction owns one fixed-size buffer:
+    //     c2b_buf : client -> backend   (source = client_fd)
+    //     b2c_buf : backend -> client   (source = backend_fd)
+    // When the buffer for a direction is full we must STOP reading from that
+    // direction's source socket (otherwise bytes are silently discarded at
+    // the buffer boundary) and resume reading once the peer has drained the
+    // buffer. This is the difference between "proxying large responses" and
+    // "corrupting them".
+    bool client_paused  = false;   // c2b_buf full  -> stop reading client_fd
+    bool backend_paused = false;   // b2c_buf full  -> stop reading backend_fd
+
+    // Current epoll interest masks, so that re-arming a socket for reading
+    // never accidentally clears a pending EPOLLOUT.
+    uint32_t client_mask  = EPOLLIN | EPOLLET;
+    uint32_t backend_mask = EPOLLOUT | EPOLLET;
+
     Connection(int cfd, int bfd, int ep, Backend* b)
-        : client_fd(cfd), backend_fd(bfd), epfd(ep), backend(b),
-          state(ConnState::CONNECTING) {}
+        : client_fd(cfd), backend_fd(bfd), state(ConnState::CONNECTING),
+          epfd(ep), backend(b) {}
+
+    // Apply an interest mask to one leg of the connection.
+    void arm(int fd, uint32_t mask) {
+        epoll_event e{};
+        e.events  = mask;
+        e.data.fd = fd;
+        epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &e);
+        if (fd == client_fd)  client_mask  = mask;
+        else                  backend_mask = mask;
+    }
+
+    // Re-enable reading on `fd` without disturbing its EPOLLOUT state.
+    void resume_read(int fd) {
+        uint32_t mask = (fd == client_fd) ? client_mask : backend_mask;
+        mask |= EPOLLIN | EPOLLET;
+        arm(fd, mask);
+    }
+
+    // Free space in the buffer that feeds `fd`?  Returns the number of bytes
+    // that may be read from `fd` right now.
+    size_t space_for(int fd) const {
+        if (fd == client_fd) return BUFFER_SIZE - c2b_end;
+        else                 return BUFFER_SIZE - b2c_end;
+    }
+
+    // Mark the source of the buffer feeding `fd` as paused (its buffer is
+    // full) / not paused.
+    void set_paused(int fd, bool paused) {
+        if (fd == client_fd) client_paused = paused;
+        else                 backend_paused = paused;
+    }
+
+    bool is_paused(int fd) const {
+        return (fd == client_fd) ? client_paused : backend_paused;
+    }
 
     ~Connection() {
         epoll_ctl(epfd, EPOLL_CTL_DEL, client_fd,  nullptr);
@@ -98,8 +236,8 @@ struct Connection {
         close(client_fd);
         close(backend_fd);
         if (backend) backend->active_connections--;
-        std::cout << "Connection closed: client=" << client_fd
-                  << " backend=" << backend_fd << "\n";
+        g_ctr.connections_closed.fetch_add(1, std::memory_order_relaxed);
+        log_msg("Connection closed: client=%d backend=%d\n", client_fd, backend_fd);
     }
 
     void close_connection() { state = ConnState::CLOSING; }
@@ -137,6 +275,13 @@ struct Connection {
                 shutdown(client_fd, SHUT_WR);
                 close_connection();
             }
+            // The buffer that feeds `fd` is now empty. If its source socket
+            // was paused because the buffer was full, reading can resume.
+            int src = (fd == backend_fd) ? client_fd : backend_fd;
+            if (is_paused(src)) {
+                set_paused(src, false);
+                resume_read(src);
+            }
         }
     }
 
@@ -152,11 +297,13 @@ struct Connection {
             if (n > space) n = space;
             memcpy(c2b_buf + c2b_end, data, n);
             c2b_end += n;
+            g_ctr.bytes_c2b.fetch_add(n, std::memory_order_relaxed);
         } else {
             size_t space = BUFFER_SIZE - b2c_end;
             if (n > space) n = space;
             memcpy(b2c_buf + b2c_end, data, n);
             b2c_end += n;
+            g_ctr.bytes_b2c.fetch_add(n, std::memory_order_relaxed);
         }
     }
 
@@ -174,10 +321,7 @@ struct Connection {
     void arm_peer_write(int fd) {
         int peer = (fd == client_fd) ? backend_fd : client_fd;
         if (has_data(peer)) {
-            epoll_event e{};
-            e.events  = EPOLLIN | EPOLLOUT | EPOLLET;
-            e.data.fd = peer;
-            epoll_ctl(epfd, EPOLL_CTL_MOD, peer, &e);
+            arm(peer, EPOLLIN | EPOLLOUT | EPOLLET);
         }
     }
 };
@@ -209,13 +353,15 @@ void backend_health_checker() {
             b->healthy = (ret == 0);
             close(sock);
         }
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        std::this_thread::sleep_for(std::chrono::seconds(g_cfg.health_interval));
     }
 }
 
 // ---------------------------------------------------------------------------
 // Worker thread  (one per CPU core, all sharing SO_REUSEPORT)
 // ---------------------------------------------------------------------------
+static std::atomic<int> g_workers_bound{0};
+
 void worker_thread() {
     thread_local std::map<int, Connection*> fd_to_conn;
 
@@ -226,7 +372,7 @@ void worker_thread() {
 
     sockaddr_in addr{};
     addr.sin_family      = AF_INET;
-    addr.sin_port        = htons(LISTEN_PORT);
+    addr.sin_port        = htons(g_cfg.listen_port);
     addr.sin_addr.s_addr = INADDR_ANY;
 
     if (bind(listen_fd,  (sockaddr*)&addr, sizeof(addr)) < 0) { perror("bind");   return; }
@@ -245,7 +391,13 @@ void worker_thread() {
     epoll_event events[MAX_EVENTS];
     char        buffer[BUFFER_SIZE];
 
-    std::cout << "Worker started, port " << LISTEN_PORT << "\n";
+    log_msg("Worker started, port %d\n", g_cfg.listen_port);
+
+    if (g_workers_bound.fetch_add(1, std::memory_order_release) + 1 == g_cfg.workers) {
+        log_msg("READY: cppbalancer listening on port %d with %d workers, %zu backends\n",
+                g_cfg.listen_port, g_cfg.workers, backends.size());
+        fflush(stdout);
+    }
 
     while (true) {
         int n_ready = epoll_wait(epfd, events, MAX_EVENTS, -1);
@@ -271,7 +423,8 @@ void worker_thread() {
 
                     Backend* backend = select_backend();
                     if (!backend) {
-                        std::cerr << "No healthy backend\n";
+                        log_msg("No healthy backend\n");
+                        g_ctr.no_healthy_backend.fetch_add(1, std::memory_order_relaxed);
                         close(cfd);
                         continue;
                     }
@@ -288,11 +441,13 @@ void worker_thread() {
                     int ret = connect(bfd, (sockaddr*)&baddr, sizeof(baddr));
                     if (ret < 0 && errno != EINPROGRESS) {
                         perror("backend connect");
+                        g_ctr.backend_connect_fail.fetch_add(1, std::memory_order_relaxed);
                         close(cfd); close(bfd);
                         continue;
                     }
 
                     backend->active_connections++;
+                    g_ctr.connections_accepted.fetch_add(1, std::memory_order_relaxed);
 
                     Connection* conn = new Connection(cfd, bfd, epfd, backend);
                     fd_to_conn[cfd] = conn;
@@ -317,8 +472,8 @@ void worker_thread() {
                     // data isn't gated on a CONNECTING check that never clears.
                     if (ret == 0) conn->state = ConnState::ACTIVE;
 
-                    std::cout << "New client=" << cfd << " backend=" << bfd
-                              << (ret == 0 ? " (sync)" : " (async)") << "\n";
+                    log_msg("New client=%d backend=%d%s\n", cfd, bfd,
+                            (ret == 0 ? " (sync)" : " (async)"));
                 }
                 continue;
             }
@@ -339,7 +494,8 @@ void worker_thread() {
             {
                 int err = 0; socklen_t len = sizeof(err);
                 if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) < 0 || err != 0) {
-                    std::cerr << "Backend connect failed: " << strerror(err) << "\n";
+                    log_msg("Backend connect failed: %s\n", strerror(err));
+                    g_ctr.backend_connect_fail.fetch_add(1, std::memory_order_relaxed);
                     remove_connection(conn, fd_to_conn);
                     continue;
                 }
@@ -351,10 +507,7 @@ void worker_thread() {
                 uint32_t flags = EPOLLIN | EPOLLET;
                 if (conn->has_data(fd)) flags |= EPOLLOUT;
 
-                epoll_event e{};
-                e.events  = flags;
-                e.data.fd = fd;
-                epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &e);
+                conn->arm(fd, flags);
                 continue;
             }
 
@@ -367,14 +520,27 @@ void worker_thread() {
                 bool active = (conn->state == ConnState::ACTIVE ||
                                conn->state == ConnState::HALF_CLOSED);
                 while (true) {
-                    ssize_t n = read(fd, buffer, sizeof(buffer));
+                    // Never read more than the destination buffer can hold:
+                    // anything beyond that would be silently discarded and
+                    // would corrupt the stream.
+                    size_t space = conn->space_for(fd);
+                    if (space == 0) {
+                        // Buffer full: apply backpressure. Stop reading from
+                        // this socket until the peer drains the buffer.
+                        conn->set_paused(fd, true);
+                        break;
+                    }
+
+                    ssize_t n = read(fd, buffer, (sizeof(buffer) < space)
+                                                ? sizeof(buffer) : space);
                     if (n > 0) {
                         conn->append_to_buffer(fd, buffer, (size_t)n);
                         if (active) conn->arm_peer_write(fd);
 
-                        bool full = (fd == conn->client_fd  && conn->c2b_end >= BUFFER_SIZE) ||
-                                    (fd == conn->backend_fd && conn->b2c_end >= BUFFER_SIZE);
-                        if (full) break;
+                        if (conn->space_for(fd) == 0) {
+                            conn->set_paused(fd, true);
+                            break;
+                        }
 
                     } else if (n == 0) {
                         // Peer closed write side (FIN). Don't hard-close yet:
@@ -406,10 +572,7 @@ void worker_thread() {
             if (!removed && (ev_flags & EPOLLOUT)) {
                 conn->try_write(fd);
                 if (!conn->has_data(fd)) {
-                    epoll_event e{};
-                    e.events  = EPOLLIN | EPOLLET;
-                    e.data.fd = fd;
-                    epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &e);
+                    conn->arm(fd, EPOLLIN | EPOLLET);
                 }
             }
 
@@ -427,14 +590,78 @@ void worker_thread() {
 }
 
 // ---------------------------------------------------------------------------
+// Argument / environment parsing
+// ---------------------------------------------------------------------------
+static void usage(const char* argv0) {
+    fprintf(stderr,
+"Usage: %s [options]\n"
+"\n"
+"  --listen-port <port>      Port the balancer listens on            (default 8181)\n"
+"  --backends <ip:port,...>  Comma separated backend pool            (default 127.0.0.1:9007,127.0.0.1:9003,127.0.0.1:6789)\n"
+"  --workers <n>             Number of worker threads               (default: hardware concurrency)\n"
+"  --health-interval <sec>   Backend health-check interval in sec    (default 5)\n"
+"  --quiet                   Suppress per-connection logging        (default: logging on)\n"
+"  --help                    Show this help\n"
+"\n"
+"Environment overrides: CPPBALANCER_LISTEN_PORT, CPPBALANCER_BACKENDS,\n"
+"                       CPPBALANCER_WORKERS, CPPBALANCER_HEALTH_INTERVAL, CPPBALANCER_QUIET\n",
+            argv0);
+}
+
+static std::vector<std::string> split_csv(const std::string& s) {
+    std::vector<std::string> out;
+    std::stringstream ss(s);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+        if (!item.empty()) out.push_back(item);
+    }
+    return out;
+}
+
+static void parse_args(int argc, char** argv) {
+    // Environment first, command line wins.
+    if (const char* p = getenv("CPPBALANCER_LISTEN_PORT"))     g_cfg.listen_port = atoi(p);
+    if (const char* p = getenv("CPPBALANCER_BACKENDS"))        g_cfg.backend_specs = split_csv(p);
+    if (const char* p = getenv("CPPBALANCER_WORKERS"))         g_cfg.workers = atoi(p);
+    if (const char* p = getenv("CPPBALANCER_HEALTH_INTERVAL")) g_cfg.health_interval = atoi(p);
+    if (const char* p = getenv("CPPBALANCER_QUIET"))           g_cfg.verbose = !(atoi(p) != 0);
+
+    for (int i = 1; i < argc; ++i) {
+        std::string a = argv[i];
+        auto need = [&](const char* name) -> std::string {
+            if (i + 1 >= argc) { fprintf(stderr, "%s requires a value\n", name); exit(2); }
+            return argv[++i];
+        };
+        if      (a == "--listen-port")     g_cfg.listen_port = atoi(need("--listen-port").c_str());
+        else if (a == "--backends")        g_cfg.backend_specs = split_csv(need("--backends"));
+        else if (a == "--workers")         g_cfg.workers = atoi(need("--workers").c_str());
+        else if (a == "--health-interval") g_cfg.health_interval = atoi(need("--health-interval").c_str());
+        else if (a == "--quiet")           g_cfg.verbose = false;
+        else if (a == "--help" || a == "-h") { usage(argv[0]); exit(0); }
+        else { fprintf(stderr, "Unknown option: %s\n", a.c_str()); usage(argv[0]); exit(2); }
+    }
+
+    if (g_cfg.workers <= 0) {
+        unsigned int hw = std::thread::hardware_concurrency();
+        g_cfg.workers = (hw == 0) ? 2 : (int)hw;
+    }
+    if (g_cfg.listen_port <= 0 || g_cfg.listen_port > 65535) {
+        fprintf(stderr, "Invalid --listen-port\n"); exit(2);
+    }
+    if (g_cfg.health_interval <= 0) g_cfg.health_interval = 5;
+    g_verbose.store(g_cfg.verbose, std::memory_order_relaxed);
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
-int main() {
+int main(int argc, char** argv) {
+    parse_args(argc, argv);
+
     init_backends();
     std::thread(backend_health_checker).detach();
 
-    unsigned int workers = std::thread::hardware_concurrency();
-    if (workers == 0) workers = 2;
+    unsigned int workers = (unsigned int)g_cfg.workers;
 
     std::vector<std::thread> pool;
     pool.reserve(workers);
