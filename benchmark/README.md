@@ -57,7 +57,7 @@ RAM, Ubuntu 24.04, all traffic over loopback.**
    the 4 logical CPUs** (47 % of the machine) for 42 µs of CPU per request,
    of which roughly **½ is the two extra `read`/`write` syscalls** that
    proxying inherently costs. On a machine with dedicated NICs and more
-   cores the same code scales close to linearly (see [§8.2](#82-worker-scaling-and-the-so_reuseport-pool)).
+   cores the same code scales close to linearly (see [§8.2](#82-worker-scaling-and-the-soreuseport-pool)).
 3. **Everything else is solid**: round-robin distribution is exact, failover
    costs nothing measurable, memory is flat and tiny, and the per-connection
    latency penalty is a constant **~60 µs**.
@@ -583,7 +583,7 @@ larger, the overflow was dropped. Measured loss for a 64 KiB body: **exactly
 | 1 KiB workload (control) | 42,948 req/s | 42,305 req/s (unchanged) |
 
 The pre-fix source is preserved verbatim in
-[`benchmark/baseline/cppbalancer_prefix.cpp`](benchmark/baseline/cppbalancer_prefix.cpp)
+[`benchmark/baseline/cppbalancer_prefix.cpp`](baseline/cppbalancer_prefix.cpp)
 so the regression can be re-measured at any time.
 
 ### 9.2 Harness bugs found while building the benchmark (fixed in the harness)

@@ -203,7 +203,7 @@ The same settings are available as environment variables
 - **Round-robin only** — no weighted, least-connections, or consistent-hash routing
 - **No TLS** — termination would require OpenSSL/BoringSSL integration
 - **No config file / hot reload** — backends are set via CLI or environment variables, but there is no live reload
-- **Fixed 64 KiB buffers** — large payloads are streamed correctly, but a larger buffer would reduce the syscall count for big responses (see [§7.6](benchmark/README.md#76-s6--payload-size-sweep) of the benchmark report)
+- **Fixed 64 KiB buffers** — large payloads are streamed correctly, but a larger buffer would reduce the syscall count for big responses (see [§7.6](benchmark/README.md#76-s6--payload-size-sweep-50-connections-2-wrk-threads) of the benchmark report)
 - **No observability** — no metrics endpoint; the internal counters are not yet exposed
 - **Health-check window** — a backend that dies is only detected at the next health-check tick (default 5 s); requests routed to it in that window fail
 
